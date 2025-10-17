@@ -358,7 +358,7 @@ WISDOM_LOG_DIR = "harp_rlhf_models/wisdom_logs"
 
 def get_safe_filename(name):
     """Sanitizes a string to be a safe filename."""
-    return "".join(c for c in name if c.isalnum() or c in (' ', '_')).rstrip()
+    return "".join(c for c in name if c.isalnum() or c in (' ', '_')).strip()
 
 @socketio.on('get_wisdom_categories')
 def handle_get_wisdom_categories():
