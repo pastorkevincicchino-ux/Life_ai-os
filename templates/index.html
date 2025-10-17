@@ -1,0 +1,838 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Life AI OS</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <style>
+        body { background-color: #1a1a1e; color: #e0e0e0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        .taskbar { background-color: rgba(30, 30, 34, 0.8); backdrop-filter: blur(10px); border-bottom: 1px solid #444; }
+        .taskbar-widget:hover, .desktop-button:hover, .dock-toggle:hover { background-color: rgba(255, 255, 255, 0.1); }
+        .desktop-button.active { background-color: #0078d4; border-color: #0078d4; color: white; }
+        .main-desktop { background-image: radial-gradient(circle at top right, rgba(0, 128, 255, 0.1), transparent 50%), radial-gradient(circle at bottom left, rgba(60, 0, 120, 0.1), transparent 50%); }
+        #ezra-command-prompt, .ezra-canvas, .side-panel { background-color: rgba(20, 20, 24, 0.7); border: 1px solid #444; }
+        .chat-bubble { max-width: 85%; padding: 10px 15px; border-radius: 12px; margin-bottom: 10px; position: relative; }
+        .chat-bubble.architect { background-color: #005a9e; color: white; align-self: flex-end; border-bottom-right-radius: 2px; }
+        .chat-bubble.ezra { background-color: #333; align-self: flex-start; border-bottom-left-radius: 2px; }
+        .chat-bubble.system { background-color: #5a2d2d; align-self: center; width: 100%; text-align: center; font-style: italic; }
+        
+        .action-btn {
+            background-color: rgba(255, 255, 255, 0.1);
+            color: #e0e0e0;
+            border: none;
+            border-radius: 5px;
+            width: 26px;
+            height: 26px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            transition: background-color 0.2s;
+        }
+        .action-btn-container {
+            position: absolute;
+            top: 8px;
+            right: -40px; /* Positioned outside by default */
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            opacity: 0;
+            transition: opacity 0.2s, right 0.2s;
+        }
+        .chat-bubble.ezra:hover .action-btn-container {
+            opacity: 1;
+            right: 8px; /* Slides in on hover */
+        }
+        .action-btn:hover { background-color: rgba(255, 255, 255, 0.3); }
+
+        .thinking-bubble .dot-pulse { display: flex; align-items: center; gap: 4px; }
+        .thinking-bubble .dot { width: 8px; height: 8px; background-color: #9ca3af; border-radius: 50%; animation: dot-pulse 1.4s infinite ease-in-out; }
+        .thinking-bubble .dot:nth-child(2) { animation-delay: 0.2s; }
+        .thinking-bubble .dot:nth-child(3) { animation-delay: 0.4s; }
+        @keyframes dot-pulse { 0%, 80%, 100% { transform: scale(0); } 40% { transform: scale(1.0); } }
+
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.7); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+        .modal-content { background-color: #2a2a2e; padding: 2rem; border-radius: 8px; border: 1px solid #444; width: 90%; max-width: 500px; }
+        .modal-content select, .modal-content input { background-color: #1a1a1e; border: 1px solid #555; color: #e0e0e0; }
+        
+        .side-panel { transition: transform 0.3s ease-in-out; width: 280px; }
+        .left-panel.hidden { transform: translateX(-100%); }
+        .right-panel.hidden { transform: translateX(100%); }
+        .editor-canvas { background-color: #fff; color: #1a1a1e; border-radius: 4px; padding: 20px; min-height: 400px; border: 1px solid #ccc; }
+        #notification-toast { transition: opacity 0.5s, transform 0.5s; }
+        .dropdown-menu { background-color: rgba(30, 30, 34, 0.9); backdrop-filter: blur(10px); border: 1px solid #444; }
+
+        /* Wisdom Desktop Styles */
+        .wisdom-category-item.bg-blue-600\/50 { /* More specific selector for overriding hover */
+            background-color: rgba(59, 130, 246, 0.4);
+        }
+        .delete-wisdom-category-btn {
+            opacity: 0;
+        }
+        .wisdom-category-item:hover .delete-wisdom-category-btn {
+            opacity: 1;
+        }
+        #wisdom-content-display .prose {
+            font-size: 1rem;
+        }
+        #wisdom-content-display h1, #wisdom-content-display h2, #wisdom-content-display h3 {
+            color: #e0e0e0;
+        }
+
+        /* Lock Screen Styles */
+        #lock-screen-overlay {
+            background-color: rgba(10, 10, 12, 0.95);
+            backdrop-filter: blur(20px);
+            z-index: 2000;
+        }
+        #lock-screen-widget {
+            background-color: rgba(30, 30, 34, 0.7);
+            border: 1px solid #444;
+            padding: 2rem;
+            border-radius: 1rem;
+            width: 90%;
+            max-width: 380px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            10%, 30%, 50%, 70%, 90% { transform: translateX(-10px); }
+            20%, 40%, 60%, 80% { transform: translateX(10px); }
+        }
+        .animate-shake {
+            animation: shake 0.5s ease-in-out;
+        }
+
+        /* Mobile Responsiveness */
+        @media (max-width: 768px) {
+            .taskbar {
+                flex-wrap: wrap;
+                padding: 0.5rem;
+            }
+            .desktop-switcher-container {
+                order: 1; /* Move to next line */
+                width: 100%;
+                justify-content: center;
+                margin-top: 0.5rem;
+                margin-bottom: 0.5rem;
+            }
+            .taskbar-right-widgets {
+                flex-grow: 1;
+                justify-content: flex-end;
+            }
+            .side-panel {
+                width: 100%;
+                z-index: 10;
+            }
+            #main-desktop {
+                padding-left: 1rem !important;
+                padding-right: 1rem !important;
+            }
+            #chat-view {
+                max-width: 100%;
+            }
+            #wisdom-desktop {
+                flex-direction: column;
+            }
+            #wisdom-desktop > div {
+                width: 100%;
+                padding-right: 0;
+            }
+            #wisdom-category-list {
+                max-height: 200px; /* Give a fixed height on mobile */
+                margin-bottom: 1rem;
+            }
+        }
+    </style>
+</head>
+<body class="w-screen h-screen overflow-hidden flex flex-col">
+
+    <div id="lock-screen-overlay" class="fixed inset-0 flex items-center justify-center hidden">
+        <div id="lock-screen-widget" class="text-center">
+            <div class="mb-6">
+                <span class="text-6xl">⚜️</span>
+                <h1 class="text-2xl font-bold mt-2">Life AI OS is Locked</h1>
+                <p id="lock-screen-time" class="text-4xl font-light mt-4"></p>
+                <p id="lock-screen-date" class="text-lg text-gray-400"></p>
+            </div>
+            <div class="relative">
+                <input type="password" id="lock-screen-password" placeholder="Enter Password" class="w-full p-3 text-center rounded-lg bg-gray-800 border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <i id="unlock-btn" class="fas fa-arrow-right absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white cursor-pointer"></i>
+            </div>
+            <p id="lock-screen-error" class="text-red-500 mt-3 h-5"></p>
+        </div>
+    </div>
+
+    <div id="os-container" class="w-full h-full flex flex-col">
+        <!-- Global Taskbar -->
+        <div class="taskbar flex items-center p-2 text-sm user-select-none shadow-lg">
+            <!-- Settings Dropdown -->
+            <div class="relative" id="settings-menu-container">
+                <div id="settings-menu-button" class="taskbar-widget cursor-pointer px-3 py-1 rounded flex items-center gap-2">
+                    <span>⚜️</span>
+                    <span class="hidden md:inline">Life AI OS</span>
+                </div>
+                <div id="settings-dropdown" class="dropdown-menu absolute top-full left-0 mt-2 w-48 rounded-md shadow-lg py-1 z-50 hidden">
+                    <a href="#" class="block px-4 py-2 text-sm text-gray-300 hover:bg-gray-700">Settings</a>
+                    <a href="#" class="block px-4 py-2 text-sm text-gray-300 hover:bg-gray-700">Account</a>
+                    <a href="#" class="block px-4 py-2 text-sm text-gray-300 hover:bg-gray-700">Subscription</a>
+                    <div class="border-t border-gray-600 my-1"></div>
+                    <a href="#" id="lock-screen-btn" class="block px-4 py-2 text-sm text-gray-300 hover:bg-gray-700">Lock Screen</a>
+                </div>
+            </div>
+
+            <!-- Desktop Switcher -->
+            <div class="flex items-center gap-1 mx-4 desktop-switcher-container">
+                <button class="desktop-button taskbar-widget px-3 py-1 rounded active" data-desktop="1" title="Main Desktop"><i class="fas fa-desktop"></i></button>
+                <button class="desktop-button taskbar-widget px-3 py-1 rounded" data-desktop="2" title="Wisdom Desktop"><i class="fas fa-brain"></i></button>
+                <button class="desktop-button taskbar-widget px-3 py-1 rounded" data-desktop="3" title="Comms Desktop"><i class="fas fa-comments"></i></button>
+                <button class="desktop-button taskbar-widget px-3 py-1 rounded" data-desktop="4" title="Tools Desktop"><i class="fas fa-cogs"></i></button>
+            </div>
+
+            <div class="flex-grow"></div>
+            <div id="response-mode-display" class="px-3 py-1 rounded-full text-xs bg-gray-700 mx-4 hidden md:block transition-colors duration-300">Mode: Wisdom</div>
+            <div class="flex items-center gap-2 taskbar-right-widgets">
+                <div class="network-status ml-4 flex items-center gap-2">
+                    <span id="status-indicator" class="text-green-500"><i class="fas fa-check-circle"></i></span>
+                    <span id="status-text" class="hidden md:inline">Connected</span>
+                </div>
+                <div class="taskbar-widget dock-toggle cursor-pointer px-3 py-1 rounded ml-4" data-id="projects_toggle" title="Toggle Projects Panel"><i class="fas fa-folder-open"></i></div>
+                <div class="taskbar-widget dock-toggle cursor-pointer px-3 py-1 rounded" data-id="tools_toggle" title="Toggle Tools Panel"><i class="fas fa-toolbox"></i></div>
+            </div>
+        </div>
+
+        <!-- Main Content Area -->
+        <div class="relative flex-grow flex overflow-hidden">
+            <!-- Left Side Panel (Projects) -->
+            <div id="left-panel" class="side-panel left-panel absolute top-0 left-0 h-full p-4 hidden flex flex-col">
+                <h3 class="font-bold mb-4">Projects</h3>
+                <div id="project-list-container" class="flex-grow overflow-y-auto">
+                    <ul id="project-list" class="space-y-2"></ul>
+                </div>
+                <div class="mt-4">
+                    <input type="text" id="new-project-name" class="w-full p-2 rounded bg-gray-800 border border-gray-600" placeholder="New project name...">
+                    <button id="add-project-btn" class="w-full mt-2 p-2 rounded bg-blue-600 hover:bg-blue-700 text-white font-bold">Add Project</button>
+                </div>
+            </div>
+
+            <!-- Main Desktop -->
+            <div id="main-desktop" class="main-desktop flex-grow flex flex-col justify-center items-center p-4 transition-all duration-300">
+                <div id="chat-view" class="w-full max-w-4xl h-full flex flex-col">
+                    <div id="ezra-canvas" class="ezra-canvas flex-grow p-4 rounded-lg overflow-y-auto flex flex-col gap-2"></div>
+                    <div class="ezra-prompt relative mt-4 flex items-center">
+                        <input type="file" id="file-attachment-input" class="hidden">
+                        <button id="file-attachment-btn" class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white cursor-pointer">
+                            <i class="fas fa-paperclip"></i>
+                        </button>
+                        <input type="text" id="ezra-command-prompt" placeholder="Speak to Ezra..." class="w-full p-3 pl-12 pr-16 rounded-lg text-base" disabled>
+                        <i id="mic-btn" class="fas fa-microphone absolute right-10 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white cursor-pointer"></i>
+                        <i id="prompt-status" class="fas fa-paper-plane absolute right-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Wisdom Library Desktop -->
+            <div id="wisdom-desktop" class="hidden flex-grow flex p-4 transition-all duration-300">
+                <div class="w-1/4 md:w-1/4 pr-4 flex flex-col">
+                    <h2 class="text-2xl font-bold mb-4 flex justify-between items-center">
+                        <span>Wisdom Library</span>
+                        <button id="refresh-wisdom-list" class="text-gray-400 hover:text-white text-lg"><i class="fas fa-sync-alt"></i></button>
+                    </h2>
+                    <div id="wisdom-category-list" class="flex-grow overflow-y-auto bg-gray-800/50 p-2 rounded-lg">
+                        <!-- Categories will be populated here -->
+                    </div>
+                </div>
+                <div class="w-3/4 md:w-3/4 flex flex-col">
+                     <div id="wisdom-content-view" class="flex-grow bg-gray-800/50 rounded-lg p-4 overflow-y-auto">
+                        <div id="wisdom-content-placeholder" class="text-center text-gray-500">
+                            <i class="fas fa-book-open fa-3x mb-4"></i>
+                            <p>Select a category to view its wisdom.</p>
+                        </div>
+                        <div id="wisdom-content-display" class="hidden">
+                            <!-- Content will be displayed here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Side Panel (Tools) -->
+            <div id="right-panel" class="side-panel right-panel absolute top-0 right-0 h-full p-4 hidden">
+                <h3 class="font-bold mb-4">Tools</h3>
+                <div id="tools-list" class="space-y-2">
+                    <button id="new-chat-btn" class="w-full text-left p-2 rounded hover:bg-gray-700"><i class="fas fa-plus-square w-6"></i> New Chat</button>
+                    <button id="archive-rlhf-btn" class="w-full text-left p-2 rounded hover:bg-gray-700"><i class="fas fa-book-bible w-6"></i> Archive Full Session</button>
+                </div>
+            </div>
+        </div>
+    </div
+    
+    <div id="notification-toast" class="absolute bottom-5 right-5 bg-green-600 text-white py-2 px-4 rounded-lg shadow-lg opacity-0 transform translate-y-10"></div>
+
+    <div id="wisdom-archive-modal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <h2 class="text-xl font-bold mb-4">Archive Wisdom</h2>
+            <p class="mb-2 text-sm text-gray-400">Archiving message:</p>
+            <div id="wisdom-message-preview" class="p-2 mb-4 border border-gray-600 rounded bg-gray-800 text-sm max-h-24 overflow-y-auto"></div>
+            <label for="wisdom-category-select" class="block mb-2 text-sm font-medium">Choose Existing Category</label>
+            <select id="wisdom-category-select" class="w-full p-2 rounded mb-4"></select>
+            <label for="wisdom-new-category" class="block mb-2 text-sm font-medium">Or Create New Category</label>
+            <input type="text" id="wisdom-new-category" placeholder="e.g., Theology, Parables..." class="w-full p-2 rounded">
+            <div class="flex justify-end gap-4 mt-6">
+                <button id="cancel-wisdom-archive" class="px-4 py-2 rounded bg-gray-600 hover:bg-gray-700">Cancel</button>
+                <button id="save-wisdom-archive" class="px-4 py-2 rounded bg-blue-600 hover:bg-blue-700 font-bold">Save Wisdom</button>
+            </div>
+        </div>
+    </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const socket = io();
+
+    // Core UI Elements
+    const ezraCanvas = document.getElementById('ezra-canvas');
+    const ezraCommandPrompt = document.getElementById('ezra-command-prompt');
+    const statusIndicator = document.getElementById('status-indicator');
+    const statusText = document.getElementById('status-text');
+    const promptStatus = document.getElementById('prompt-status');
+    const projectList = document.getElementById('project-list');
+    const responseModeDisplay = document.getElementById('response-mode-display');
+    const notificationToast = document.getElementById('notification-toast');
+    const micBtn = document.getElementById('mic-btn');
+    const settingsMenuButton = document.getElementById('settings-menu-button');
+    const settingsDropdown = document.getElementById('settings-dropdown');
+
+    // Lock Screen Elements
+    const lockScreenOverlay = document.getElementById('lock-screen-overlay');
+    const lockScreenBtn = document.getElementById('lock-screen-btn');
+    const lockScreenPasswordInput = document.getElementById('lock-screen-password');
+    const unlockBtn = document.getElementById('unlock-btn');
+    const lockScreenTime = document.getElementById('lock-screen-time');
+    const lockScreenDate = document.getElementById('lock-screen-date');
+    const lockScreenError = document.getElementById('lock-screen-error');
+
+    // File Attachment Elements
+    const fileAttachmentBtn = document.getElementById('file-attachment-btn');
+    const fileAttachmentInput = document.getElementById('file-attachment-input');
+    let attachedFile = null;
+
+    // Side Panels
+    const leftPanel = document.getElementById('left-panel');
+    const rightPanel = document.getElementById('right-panel');
+    const mainDesktop = document.getElementById('main-desktop');
+
+    // Wisdom Desktop Elements
+    const wisdomDesktop = document.getElementById('wisdom-desktop');
+    const wisdomCategoryList = document.getElementById('wisdom-category-list');
+    const wisdomContentView = document.getElementById('wisdom-content-view');
+    const wisdomContentDisplay = document.getElementById('wisdom-content-display');
+    const wisdomContentPlaceholder = document.getElementById('wisdom-content-placeholder');
+    const refreshWisdomBtn = document.getElementById('refresh-wisdom-list');
+
+    // Wisdom Archive Modal Elements
+    const wisdomModal = document.getElementById('wisdom-archive-modal');
+    const wisdomMessagePreview = document.getElementById('wisdom-message-preview');
+    const wisdomCategorySelect = document.getElementById('wisdom-category-select');
+    const wisdomNewCategoryInput = document.getElementById('wisdom-new-category');
+    const cancelWisdomBtn = document.getElementById('cancel-wisdom-archive');
+    const saveWisdomBtn = document.getElementById('save-wisdom-archive');
+    let messageToArchive = null;
+
+    // --- SPEECH RECOGNITION ---
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    let recognition;
+    let isListening = false;
+
+    if (SpeechRecognition) {
+        recognition = new SpeechRecognition();
+        recognition.continuous = false;
+        recognition.lang = 'en-US';
+        recognition.interimResults = false;
+        recognition.maxAlternatives = 1;
+
+        recognition.onstart = () => {
+            isListening = true;
+            micBtn.classList.remove('text-gray-400');
+            micBtn.classList.add('text-red-500', 'fa-beat');
+            promptStatus.className = 'fas fa-microphone-alt absolute right-3 top-1/2 -translate-y-1/2 text-red-400';
+        };
+
+        recognition.onend = () => {
+            isListening = false;
+            micBtn.classList.add('text-gray-400');
+            micBtn.classList.remove('text-red-500', 'fa-beat');
+            promptStatus.className = 'fas fa-paper-plane absolute right-3 top-1/2 -translate-y-1/2 text-gray-400';
+        };
+
+        recognition.onresult = (event) => {
+            const transcript = event.results[0][0].transcript;
+            ezraCommandPrompt.value = transcript;
+            // Automatically send the command after transcription
+            socket.emit('ezra_command', { text: transcript });
+            ezraCommandPrompt.value = '';
+            promptStatus.className = 'fas fa-circle-notch fa-spin absolute right-3 top-1/2 -translate-y-1/2 text-blue-400';
+        };
+
+        recognition.onerror = (event) => {
+            console.error('Speech recognition error:', event.error);
+            showNotification(`Speech error: ${event.error}`, true);
+        };
+    } else {
+        console.log('Speech Recognition not supported in this browser.');
+        micBtn.style.display = 'none';
+    }
+
+
+    // --- UTILITY FUNCTIONS ---
+    function showNotification(message, isError = false) {
+        notificationToast.textContent = message;
+        notificationToast.style.backgroundColor = isError ? '#c53030' : '#2f855a';
+        notificationToast.classList.remove('opacity-0', 'translate-y-10');
+        setTimeout(() => {
+            notificationToast.classList.add('opacity-0', 'translate-y-10');
+        }, 3000);
+    }
+
+    const removeThinkingIndicator = () => {
+        const indicator = document.getElementById('thinking-indicator');
+        if (indicator) indicator.remove();
+    };
+
+    const closeWisdomModal = () => {
+        wisdomModal.classList.add('hidden');
+        wisdomNewCategoryInput.value = '';
+        wisdomCategorySelect.value = '';
+        messageToArchive = null;
+    };
+
+    // --- LOCK SCREEN LOGIC ---
+    // WARNING: Storing password in client-side JS is not secure.
+    // This is for demonstration purposes only. A real application
+    // would use a proper authentication flow with a server.
+    const LOCK_PASSWORD = 'jasmine';
+    let timeUpdateInterval;
+
+    const showLockScreen = () => {
+        lockScreenOverlay.classList.remove('hidden');
+        lockScreenPasswordInput.value = '';
+        lockScreenError.textContent = '';
+        lockScreenPasswordInput.focus();
+
+        const updateTime = () => {
+            const now = new Date();
+            lockScreenTime.textContent = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            lockScreenDate.textContent = now.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
+        };
+        updateTime();
+        timeUpdateInterval = setInterval(updateTime, 1000); // Update every second
+    };
+
+    const hideLockScreen = () => {
+        lockScreenOverlay.classList.add('hidden');
+        clearInterval(timeUpdateInterval);
+    };
+
+    const checkPassword = () => {
+        if (lockScreenPasswordInput.value === LOCK_PASSWORD) {
+            hideLockScreen();
+        } else {
+            lockScreenError.textContent = 'Incorrect Password';
+            lockScreenPasswordInput.value = '';
+            lockScreenPasswordInput.focus();
+            // Add a shake animation for bad password
+            document.getElementById('lock-screen-widget').classList.add('animate-shake');
+            setTimeout(() => {
+                document.getElementById('lock-screen-widget').classList.remove('animate-shake');
+            }, 500);
+        }
+    };
+
+
+    const renderWisdomCategories = (categories) => {
+        wisdomCategoryList.innerHTML = '';
+        if (categories.length === 0) {
+            wisdomCategoryList.innerHTML = '<p class="text-gray-500 p-4 text-center">No wisdom archived yet.</p>';
+            return;
+        }
+        categories.forEach(cat => {
+            const catElement = document.createElement('div');
+            catElement.className = 'p-2 rounded hover:bg-blue-600/30 cursor-pointer flex justify-between items-center wisdom-category-item';
+            catElement.dataset.category = cat;
+            catElement.innerHTML = `
+                <span>${cat}</span>
+                <button class="delete-wisdom-category-btn text-gray-500 hover:text-red-500 text-xs opacity-0 group-hover:opacity-100 transition-opacity" data-category="${cat}" title="Delete Category">
+                    <i class="fas fa-trash-alt"></i>
+                </button>
+            `;
+            wisdomCategoryList.appendChild(catElement);
+        });
+    };
+
+    const renderWisdomContent = (content) => {
+        wisdomContentDisplay.innerHTML = ''; // Clear previous content
+        // A simple markdown-to-HTML converter
+        const formattedContent = content
+            .replace(/^### (.*$)/gim, '<h3 class="text-lg font-bold mt-4 mb-2">$1</h3>')
+            .replace(/^## (.*$)/gim, '<h2 class="text-xl font-bold mt-6 mb-3 border-b border-gray-600 pb-1">$1</h2>')
+            .replace(/^# (.*$)/gim, '<h1 class="text-2xl font-bold mt-8 mb-4 border-b-2 border-gray-500 pb-2">$1</h1>')
+            .replace(/\*\*(.*)\*\*/g, '<strong>$1</strong>')
+            .replace(/\*(.*)\*/g, '<em>$1</em>')
+            .replace(/^- (.*$)/gim, '<li class="list-disc list-inside ml-4">$1</li>')
+            .replace(/\n/g, '<br>');
+
+        wisdomContentDisplay.innerHTML = `<div class="prose prose-invert max-w-none">${formattedContent}</div>`;
+        wisdomContentPlaceholder.classList.add('hidden');
+        wisdomContentDisplay.classList.remove('hidden');
+    };
+
+
+    // --- UI UPDATE LOGIC ---
+    const updateUI = (state) => {
+        const isScrolledToBottom = ezraCanvas.scrollHeight - ezraCanvas.clientHeight <= ezraCanvas.scrollTop + 5;
+        ezraCanvas.innerHTML = '';
+        state.chat_history.forEach(msg => {
+            const bubble = document.createElement('div');
+            bubble.classList.add('chat-bubble');
+            let senderDisplay;
+            if (msg.sender.toLowerCase() === 'architect') {
+                bubble.classList.add('architect');
+                senderDisplay = 'Architect';
+                bubble.innerHTML = `<div class="font-bold text-sm mb-1">${senderDisplay}</div><div class="text-content">${msg.text}</div>`;
+            } else if (msg.sender.toLowerCase() === 'system') {
+                bubble.classList.add('system');
+                senderDisplay = 'System';
+                bubble.innerHTML = `<div class="font-bold text-sm mb-1">${senderDisplay}</div><div class="text-content">${msg.text}</div>`;
+            } else {
+                bubble.classList.add('ezra');
+                senderDisplay = 'Ezra';
+                bubble.innerHTML = `
+                    <div class="font-bold text-sm mb-1">${senderDisplay}</div>
+                    <div class="text-content">${msg.text}</div>
+                    <div class="action-btn-container">
+                        <button class="action-btn archive-btn" title="Archive Wisdom"><i class="fas fa-book-medical"></i></button>
+                        <button class="action-btn copy-btn" title="Copy to clipboard"><i class="fas fa-copy"></i></button>
+                    </div>`;
+            }
+            bubble.dataset.message = JSON.stringify(msg);
+            ezraCanvas.appendChild(bubble);
+        });
+
+        if (isScrolledToBottom) {
+            ezraCanvas.scrollTop = ezraCanvas.scrollHeight;
+        }
+
+        projectList.innerHTML = '';
+        state.projects.forEach(proj => {
+            const li = document.createElement('li');
+            li.className = 'p-2 rounded hover:bg-gray-700 flex justify-between items-center';
+            li.innerHTML = `<span>${proj}</span><button class="px-2 delete-project-btn" data-name="${proj}"><i class="fas fa-trash-alt text-gray-500 hover:text-red-500"></i></button>`;
+            projectList.appendChild(li);
+        });
+        
+        responseModeDisplay.textContent = 'Mode: ' + (state.current_mode || 'Wisdom');
+        
+        // Update response mode display color based on mode
+        const modeColorClasses = {
+            'Wisdom': 'bg-gray-700',
+            'Functional': 'bg-blue-700',
+            'Creative': 'bg-purple-700'
+        };
+        // Clear existing color classes
+        responseModeDisplay.classList.remove('bg-gray-700', 'bg-blue-700', 'bg-purple-700');
+        // Add new color class
+        responseModeDisplay.classList.add(modeColorClasses[state.current_mode] || 'bg-gray-700');
+    };
+
+    // --- EVENT LISTENERS ---
+
+    // Desktop Switcher
+    document.querySelectorAll('.desktop-button').forEach(button => {
+        button.addEventListener('click', () => {
+            const desktopId = button.dataset.desktop;
+
+            // Manage active state for buttons
+            document.querySelectorAll('.desktop-button').forEach(btn => btn.classList.remove('active'));
+            button.classList.add('active');
+
+            // Hide all desktops
+            mainDesktop.classList.add('hidden');
+            wisdomDesktop.classList.add('hidden');
+            // Add other desktops here when they are created
+
+            // Show the selected desktop
+            if (desktopId === '1') {
+                mainDesktop.classList.remove('hidden');
+            } else if (desktopId === '2') {
+                wisdomDesktop.classList.remove('hidden');
+                socket.emit('get_wisdom_categories'); // Refresh categories when switching to this desktop
+            }
+            // Add other desktop conditions here
+        });
+    });
+
+    // Settings Menu
+    settingsMenuButton.addEventListener('click', (e) => {
+        e.stopPropagation();
+        settingsDropdown.classList.toggle('hidden');
+    });
+
+    document.addEventListener('click', (e) => {
+        if (!settingsMenuButton.contains(e.target) && !settingsDropdown.contains(e.target)) {
+            settingsDropdown.classList.add('hidden');
+        }
+    });
+
+    // Lock Screen Activation
+    lockScreenBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        settingsDropdown.classList.add('hidden'); // Hide menu
+        showLockScreen();
+    });
+
+    unlockBtn.addEventListener('click', checkPassword);
+    lockScreenPasswordInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            checkPassword();
+        }
+    });
+
+
+    // Mic Button
+    micBtn.addEventListener('click', () => {
+        if (!isListening && recognition) {
+            recognition.start();
+        } else if (isListening && recognition) {
+            recognition.stop();
+        }
+    });
+
+    // Wisdom Desktop Listeners
+    refreshWisdomBtn.addEventListener('click', () => {
+        socket.emit('get_wisdom_categories');
+        showNotification('Refreshing wisdom categories...');
+    });
+
+    wisdomCategoryList.addEventListener('click', (e) => {
+        const categoryItem = e.target.closest('.wisdom-category-item');
+        const deleteBtn = e.target.closest('.delete-wisdom-category-btn');
+
+        if (deleteBtn) {
+            e.stopPropagation();
+            const category = deleteBtn.dataset.category;
+            if (confirm(`Are you sure you want to permanently delete the wisdom category "${category}"? This cannot be undone.`)) {
+                socket.emit('delete_wisdom_category', { category });
+            }
+            return;
+        }
+
+        if (categoryItem) {
+            const category = categoryItem.dataset.category;
+            // Highlight selected item
+            document.querySelectorAll('.wisdom-category-item').forEach(item => item.classList.remove('bg-blue-600/50'));
+            categoryItem.classList.add('bg-blue-600/50');
+            
+            socket.emit('get_wisdom_content', { category });
+            wisdomContentPlaceholder.classList.add('hidden');
+            wisdomContentDisplay.classList.add('hidden');
+            wisdomContentView.innerHTML += '<div id="wisdom-loading" class="text-center text-gray-500"><i class="fas fa-spinner fa-spin fa-2x"></i></div>';
+        }
+    });
+
+    // Panel Toggles
+    document.querySelector('[data-id="projects_toggle"]').addEventListener('click', () => {
+        leftPanel.classList.toggle('hidden');
+        if (window.innerWidth > 768) {
+            mainDesktop.style.paddingLeft = leftPanel.classList.contains('hidden') ? '1rem' : '300px';
+        }
+    });
+    document.querySelector('[data-id="tools_toggle"]').addEventListener('click', () => {
+        rightPanel.classList.toggle('hidden');
+        if (window.innerWidth > 768) {
+            mainDesktop.style.paddingRight = rightPanel.classList.contains('hidden') ? '1rem' : '300px';
+        }
+    });
+
+    // Tool Buttons
+    document.getElementById('new-chat-btn').addEventListener('click', () => {
+        if (confirm('Are you sure you want to start a new chat? The current conversation will be cleared.')) {
+            socket.emit('new_chat');
+        }
+    });
+    document.getElementById('archive-rlhf-btn').addEventListener('click', () => {
+        socket.emit('archive_session');
+        showNotification('Archiving full session...');
+    });
+
+    // Project Management
+    document.getElementById('add-project-btn').addEventListener('click', () => {
+        const input = document.getElementById('new-project-name');
+        if (input.value.trim()) {
+            socket.emit('add_project', { name: input.value.trim() });
+            input.value = '';
+        }
+    });
+    projectList.addEventListener('click', (e) => {
+        if (e.target.closest('.delete-project-btn')) {
+            const name = e.target.closest('.delete-project-btn').dataset.name;
+            if (confirm(`Are you sure you want to delete project "${name}"?`)) {
+                socket.emit('delete_project', { name });
+            }
+        }
+    });
+
+    // Chat Input
+    ezraCommandPrompt.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && (ezraCommandPrompt.value.trim() !== '' || attachedFile)) {
+            const commandText = ezraCommandPrompt.value;
+            
+            if (attachedFile) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const fileContent = e.target.result;
+                    socket.emit('ezra_command', { 
+                        text: commandText,
+                        attachment: {
+                            filename: attachedFile.name,
+                            content: fileContent
+                        }
+                    });
+                };
+                reader.readAsArrayBuffer(attachedFile); // Send as ArrayBuffer
+
+                // Reset file attachment state
+                attachedFile = null;
+                fileAttachmentInput.value = '';
+                fileAttachmentBtn.classList.remove('text-blue-500');
+
+            } else {
+                 socket.emit('ezra_command', { text: commandText });
+            }
+
+            ezraCommandPrompt.value = '';
+            promptStatus.className = 'fas fa-circle-notch fa-spin absolute right-3 top-1/2 -translate-y-1/2 text-blue-400';
+            const thinkingBubble = document.createElement('div');
+            thinkingBubble.id = 'thinking-indicator';
+            thinkingBubble.classList.add('chat-bubble', 'ezra', 'thinking-bubble');
+            thinkingBubble.innerHTML = `<div class="font-bold text-sm mb-1">Ezra</div><div class="dot-pulse"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>`;
+            ezraCanvas.appendChild(thinkingBubble);
+            ezraCanvas.scrollTop = ezraCanvas.scrollHeight;
+        }
+    });
+
+    // Dynamic listeners for chat bubble actions
+    ezraCanvas.addEventListener('click', (e) => {
+        const copyBtn = e.target.closest('.copy-btn');
+        if (copyBtn) {
+            const textToCopy = copyBtn.closest('.chat-bubble').querySelector('.text-content').innerText;
+            navigator.clipboard.writeText(textToCopy).then(() => showNotification('Copied to clipboard!'));
+            return;
+        }
+        const archiveBtn = e.target.closest('.archive-btn');
+        if (archiveBtn) {
+            const bubble = archiveBtn.closest('.chat-bubble');
+            messageToArchive = JSON.parse(bubble.dataset.message);
+            wisdomMessagePreview.textContent = messageToArchive.text;
+            wisdomModal.classList.remove('hidden');
+        }
+    });
+
+    // Wisdom Modal
+    cancelWisdomBtn.addEventListener('click', closeWisdomModal);
+    saveWisdomBtn.addEventListener('click', () => {
+        const category = wisdomNewCategoryInput.value.trim() || wisdomCategorySelect.value;
+        if (!category) {
+            showNotification('Please select or create a category.', true);
+            return;
+        }
+        if (messageToArchive) {
+            socket.emit('archive_to_wisdom_category', { category, message: messageToArchive });
+            closeWisdomModal();
+        }
+    });
+
+    // File Attachment
+    fileAttachmentBtn.addEventListener('click', () => {
+        fileAttachmentInput.click();
+    });
+
+    fileAttachmentInput.addEventListener('change', (event) => {
+        const file = event.target.files[0];
+        if (file) {
+            attachedFile = file;
+            showNotification(`Attached: ${file.name}`);
+            // Visually indicate that a file is attached
+            fileAttachmentBtn.classList.add('text-blue-500');
+        }
+    });
+
+
+    // --- SOCKET.IO HANDLERS ---
+    socket.on('connect', () => {
+        statusIndicator.innerHTML = '<i class="fas fa-check-circle"></i>';
+        statusIndicator.className = 'text-green-500';
+        statusText.textContent = 'Connected';
+        ezraCommandPrompt.disabled = false;
+        ezraCommandPrompt.placeholder = 'Speak to Ezra...';
+        socket.emit('get_wisdom_categories');
+    });
+    socket.on('disconnect', () => {
+        statusIndicator.innerHTML = '<i class="fas fa-times-circle"></i>';
+        statusIndicator.className = 'text-red-500';
+        statusText.textContent = 'Disconnected';
+        ezraCommandPrompt.disabled = true;
+        ezraCommandPrompt.placeholder = 'Reconnecting...';
+    });
+    socket.on('os_update', (data) => {
+        removeThinkingIndicator();
+        if (data && data.state) updateUI(data.state);
+        promptStatus.className = 'fas fa-paper-plane absolute right-3 top-1/2 -translate-y-1/2 text-gray-400';
+    });
+    socket.on('system_notification', (data) => {
+        showNotification(data.message, data.isError);
+    });
+    socket.on('wisdom_categories_update', (data) => {
+        wisdomCategorySelect.innerHTML = '<option value="">-- Select a category --</option>';
+        data.categories.forEach(cat => {
+            const option = document.createElement('option');
+            option.value = cat;
+            option.textContent = cat;
+            wisdomCategorySelect.appendChild(option);
+        });
+        // Also update the main wisdom desktop view
+        renderWisdomCategories(data.categories);
+    });
+    socket.on('wisdom_content_update', (data) => {
+        const loading = document.getElementById('wisdom-loading');
+        if(loading) loading.remove();
+
+        if (data.error) {
+            showNotification(data.error, true);
+            wisdomContentDisplay.classList.add('hidden');
+            wisdomContentPlaceholder.classList.remove('hidden');
+            wisdomContentPlaceholder.innerHTML = `<i class="fas fa-exclamation-triangle fa-3x mb-4 text-red-500"></i><p>${data.error}</p>`;
+        } else {
+            renderWisdomContent(data.content);
+        }
+    });
+
+    socket.on('wisdom_category_deleted', (data) => {
+        showNotification(`Category "${data.category}" deleted.`);
+        // Clear content view if the deleted category was the one being viewed
+        const selectedCategory = document.querySelector('.wisdom-category-item.bg-blue-600/50');
+        if (selectedCategory && selectedCategory.dataset.category === data.category) {
+            wisdomContentDisplay.classList.add('hidden');
+            wisdomContentPlaceholder.classList.remove('hidden');
+            wisdomContentPlaceholder.innerHTML = `
+                <i class="fas fa-book-open fa-3x mb-4"></i>
+                <p>Select a category to view its wisdom.</p>`;
+        }
+        // Refresh the list
+        socket.emit('get_wisdom_categories');
+    });
+});
+</script>
+</body>
+</html>

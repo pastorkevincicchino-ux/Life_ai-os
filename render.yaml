@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: harp-os-server
+    env: python
+    buildCommand: "pip install -r requirements.txt"
+    # This is the final, definitive start command for production stability
+    startCommand: "gunicorn --worker-class geventwebsocket.gunicorn.workers.GeventWebSocketWorker -b 0.0.0.0:10000 app:app"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: GOOGLE_API_KEY
+        sync: false
+
