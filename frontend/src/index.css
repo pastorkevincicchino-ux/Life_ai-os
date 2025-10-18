@@ -1,9 +1,8 @@
-/* src/index.css */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* Root color system */
+/* Base color tokens and themes */
 @layer base {
   :root {
     --background: 0 0% 100%;
@@ -51,7 +50,7 @@
   }
 }
 
-/* Base element defaults */
+/* Core element defaults */
 @layer base {
   * {
     border-color: hsl(var(--border));
